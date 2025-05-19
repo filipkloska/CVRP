@@ -17,9 +17,10 @@ class VRPSolverRMEA:
         #matrix containing the times where node i j were adjacent to each other 
         self.adjancency_count_matrix = np.zeros((len(self.instance.distance_matrix),len(self.instance.distance_matrix)))
         #matrix contating the first time where node i j became adjacent to each other
-        self.adjancency_time_matrix = np.zeros((len(self.instance.distance_matrix),len(self.instance.distance_matrix)))
+        self.adjancency_time_matrix = np.ones((len(self.instance.distance_matrix),len(self.instance.distance_matrix)))
         self.current_generation = 0
         self.previous_alpha = 0
+        print(len(self.instance.coords))
 
     def initialize_population(self):
         population = []
@@ -65,22 +66,20 @@ class VRPSolverRMEA:
         coords = self.instance.coords
         matrix = np.zeros((N, N))
         for i in range(N):
-            for j in range(N+1,N):
-                if i == j:
-                    continue
-                
-                x_i, y_i= coords[i]  
-                x_j, y_j = coords[j]
+            for j in range(N):
+                x_i, y_i= coords[i+1]  
+                x_j, y_j = coords[j+1]
                 center_x = (x_i + x_j) / 2
                 center_y = (y_i + y_j) / 2
                 dist_ij = self.instance.distance_matrix[i][j]
+                print(f"Dist ij: {dist_ij}")
                 relevance = 0
                 M = 0
                 for k in range(N):
                     if k == i or k == j:
                         continue
 
-                    x_k, y_k = coords[k]
+                    x_k, y_k = coords[k+1]
                     dist_to_center = math.hypot(x_k - center_x, y_k - center_y)
                     if dist_to_center <= radius:
                         M += 1
@@ -159,7 +158,6 @@ class VRPSolverRMEA:
         no_improve = 0
 
         for generation in range(self.max_generations):
-            print("WTF")
             self.build_relevance_matrix(population[0])
             population.sort(key=self.evaluate)
             current_best = self.evaluate(population[0])
