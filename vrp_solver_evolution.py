@@ -59,7 +59,7 @@ class VRPSolverRMEA:
                 total_distance += self.instance.distance_matrix[route[i]][route[i + 1]]
         return total_distance
 
-    def build_relevance_matrix(self, population):
+    def build_relevance_matrix(self):
         N = len(self.instance.distance_matrix)
         dist_max = self.instance.find_max_distance()
         radius = self.neighbour_radius
@@ -94,43 +94,67 @@ class VRPSolverRMEA:
         
         return matrix
 
+    def parentToArray(self,solution):
+        array = []
+        for route in solution:
+            array += [customer for customer in route]
+        prev = None
+        cleaned_array = []
+        for item in array:
+            if item == 0 and prev == 0:
+                continue
+            cleaned_array.append(item)
+            prev = item
+        print(cleaned_array)
+        return cleaned_array
+
     def crossover(self, parent1, parent2):
         child = []
         customers = set(range(1, len(self.instance.demands)))
         used = set()
         vehicle_capacity = self.instance.capacity
+        p1 = self.parentToArray(parent1)
+        p2 = self.parentToArray(parent2)
 
-        def get_next_customer(last, available):
-            if not available:
-                return None
-            probs = [(c, self.relevance_matrix[last][c]) for c in available]
-            total = sum(p for _, p in probs)
-            if total == 0:
-                return random.choice(list(available))
-            r = random.uniform(0, total)
-            s = 0
-            for c, p in probs:
-                s += p
-                if s >= r:
-                    return c
-            return random.choice(list(available))
 
-        while customers:
-            route = [0]
-            load = 0
-            current = 0
-            while True:
-                next_customer = get_next_customer(current, customers - used)
-                if next_customer is None or load + self.instance.demands[next_customer] > vehicle_capacity:
-                    break
-                route.append(next_customer)
-                load += self.instance.demands[next_customer]
-                used.add(next_customer)
-                current = next_customer
-            route.append(0)
-            child.append(route)
-            customers -= used
-        return child
+        #crossover point where we start 
+        crossover_point = 0
+        while(crossover_point == 0):
+            random_index = np.random.randint(1,len(p1))
+            crossover_point = p1[random_index]
+        print(crossover_point)
+        print(random_index)
+        # def get_next_customer(last, available):
+        #     if not available:
+        #         return None
+        #     probs = [(c, self.relevance_matrix[last][c]) for c in available]
+        #     total = sum(p for _, p in probs)
+        #     if total == 0:
+        #         return random.choice(list(available))
+        #     r = random.uniform(0, total)
+        #     s = 0
+        #     for c, p in probs:
+        #         s += p
+        #         if s >= r:
+        #             return c
+        #     return random.choice(list(available))
+
+        # while customers:
+        #     route = [0]
+        #     load = 0
+        #     current = 0
+        #     while True:
+        #         next_customer = get_next_customer(current, customers - used)
+        #         if next_customer is None or load + self.instance.demands[next_customer] > vehicle_capacity:
+        #             break
+        #         route.append(next_customer)
+        #         load += self.instance.demands[next_customer]
+        #         used.add(next_customer)
+        #         current = next_customer
+        #     route.append(0)
+        #     child.append(route)
+        #     customers -= used
+        # return child
 
     def mutate(self, solution):
         new_solution = copy.deepcopy(solution)
@@ -155,38 +179,47 @@ class VRPSolverRMEA:
 
     def solve(self):
         population = self.initialize_population()
-        no_improve = 0
+        # for i, solution in enumerate(population):
+        #     print(f"Solution {i}:")
+        #     self.parentToArray(solution)
+        #     for j, route in enumerate(solution):
+        #         print(f"  Route {j}: {route}")
+        self.crossover(population[0],population[1])
+                
+        
 
-        for generation in range(self.max_generations):
-            self.build_relevance_matrix(population[0])
-            population.sort(key=self.evaluate)
-            current_best = self.evaluate(population[0])
-            if current_best < self.best_cost:
-                self.best_cost = current_best
-                self.best_solution = copy.deepcopy(population[0])
-                no_improve = 0
-            else:
-                no_improve += 1
+        # no_improve = 0
 
-            if generation % 10 == 0 or generation == self.max_generations - 1:
-                print(f"Epoka {generation}: najlepszy koszt = {self.best_cost:.2f}")
-            if no_improve >= self.no_improve_limit:
-                break
+        # for generation in range(self.max_generations):
+        #     self.build_relevance_matrix(population[0])
+        #     population.sort(key=self.evaluate)
+        #     current_best = self.evaluate(population[0])
+        #     if current_best < self.best_cost:
+        #         self.best_cost = current_best
+        #         self.best_solution = copy.deepcopy(population[0])
+        #         no_improve = 0
+        #     else:
+        #         no_improve += 1
 
-            self.relevance_matrix = self.build_relevance_matrix(population[:10])
-            new_population = population[:10]
+        #     if generation % 10 == 0 or generation == self.max_generations - 1:
+        #         print(f"Epoka {generation}: najlepszy koszt = {self.best_cost:.2f}")
+        #     if no_improve >= self.no_improve_limit:
+        #         break
 
-            while len(new_population) < self.population_size:
-                p1, p2 = random.sample(population[:15], 2)
-                child = self.crossover(p1, p2)
-                child = self.mutate(child)
-                child = self.local_search(child)
-                new_population.append(child)
+        #     self.relevance_matrix = self.build_relevance_matrix(population[:10])
+        #     new_population = population[:10]
 
-            population = new_population
-            self.current_generation += 1
+        #     while len(new_population) < self.population_size:
+        #         p1, p2 = random.sample(population[:15], 2)
+        #         child = self.crossover(p1, p2)
+        #         child = self.mutate(child)
+        #         child = self.local_search(child)
+        #         new_population.append(child)
 
-        self.routes = self.best_solution
+        #     population = new_population
+        #     self.current_generation += 1
+
+        # self.routes = self.best_solution
 
     def print_solution(self):
         if not self.routes:
