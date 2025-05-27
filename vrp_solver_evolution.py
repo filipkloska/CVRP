@@ -2,10 +2,14 @@ import random
 import numpy as np
 import copy
 import math
+from distance_utils import compute_distance_matrix
+from collections import Counter
+import rmea_utils as rmea
 
 class VRPSolverRMEA:
     def __init__(self, instance):
         self.instance = instance
+        self.distance_matrix = compute_distance_matrix(instance.coords,dtype=float)
         self.best_solution = None
         self.best_cost = float('inf')
         self.routes = []
@@ -15,12 +19,12 @@ class VRPSolverRMEA:
         self.no_improve_limit = 500
         self.relevance_matrix = None
         #matrix containing the times where node i j were adjacent to each other 
-        self.adjancency_count_matrix = np.zeros((len(self.instance.distance_matrix),len(self.instance.distance_matrix)))
+        self.adjancency_count_matrix = np.zeros((len(self.distance_matrix),len(self.distance_matrix)))
         #matrix contating the first time where node i j became adjacent to each other
-        self.adjancency_time_matrix = np.ones((len(self.instance.distance_matrix),len(self.instance.distance_matrix)))
+        self.adjancency_time_matrix = np.ones((len(self.distance_matrix),len(self.distance_matrix)))
         self.current_generation = 0
         self.previous_alpha = 0
-        print(len(self.instance.coords))
+        
 
     def initialize_population(self):
         population = []
@@ -56,81 +60,82 @@ class VRPSolverRMEA:
         total_distance = 0
         for route in solution:
             for i in range(len(route) - 1):
-                total_distance += self.instance.distance_matrix[route[i]][route[i + 1]]
+                total_distance += self.distance_matrix[route[i]][route[i + 1]]
         return total_distance
 
-    def build_relevance_matrix(self, population):
-        N = len(self.instance.distance_matrix)
+    def build_relevance_matrix(self):
+        
+        #not sure if it should be 29 or 30 - does this make a difference (i think it should)
+        N = len(self.distance_matrix)
         dist_max = self.instance.find_max_distance()
         radius = self.neighbour_radius
         coords = self.instance.coords
-        matrix = np.zeros((N, N))
-        for i in range(N):
-            for j in range(N):
-                x_i, y_i= coords[i+1]  
-                x_j, y_j = coords[j+1]
-                center_x = (x_i + x_j) / 2
-                center_y = (y_i + y_j) / 2
-                dist_ij = self.instance.distance_matrix[i][j]
-                print(f"Dist ij: {dist_ij}")
-                relevance = 0
-                M = 0
-                for k in range(N):
-                    if k == i or k == j:
-                        continue
-
-                    x_k, y_k = coords[k+1]
-                    dist_to_center = math.hypot(x_k - center_x, y_k - center_y)
-                    if dist_to_center <= radius:
-                        M += 1
-                
-                alpha = self.previous_alpha + (self.current_generation/self.max_generations)
-                self.previous_alpha = alpha
-
-                relevance = ((1 - alpha) * (N - M)) + ((1 - alpha) * (dist_max - dist_ij)) + (alpha * (self.adjancency_count_matrix[i][j] + 1/self.adjancency_time_matrix[i][j]))
-
-                matrix[i][j] = matrix[j][i] = relevance
-                print(f"Relevance for node {i} and {j}: {relevance}")        
         
+        matrix = np.zeros((N, N),dtype=float)
+        for i in range(1,N):
+            for j in range(1,N):
+                if i == j:
+                    matrix[i][j] = matrix[j][i] = 0
+                else:
+                    x_i, y_i= coords[i+1]  
+                    x_j, y_j = coords[j+1]
+                    center_x = (x_i + x_j) / 2
+                    center_y = (y_i + y_j) / 2
+                    dist_ij = self.distance_matrix[i][j]
+                    print(f"Dist ij: {dist_ij}")
+                    relevance = 0
+                    M = 0
+                    for k in range(1,N):
+                        if k == i or k == j:
+                            continue
+
+                        x_k, y_k = coords[k+1]
+                        dist_to_center = math.hypot(x_k - center_x, y_k - center_y)
+                        if dist_to_center <= radius:
+                            M += 1
+                    
+                    alpha = self.previous_alpha + (self.current_generation/self.max_generations)
+                    self.previous_alpha = alpha
+
+                    relevance = ((1 - alpha) * (N - M)) + ((1 - alpha) * (dist_max - dist_ij)) + (alpha * (self.adjancency_count_matrix[i][j] + 1/self.adjancency_time_matrix[i][j]))
+                    matrix[i][j] = matrix[j][i] = round(relevance,3)
+                print(f"Relevance for node {i} and {j}: {matrix[i][j]}")        
+        print(f"coords size: {len(coords)}")
+
         return matrix
+    
 
     def crossover(self, parent1, parent2):
-        child = []
-        customers = set(range(1, len(self.instance.demands)))
-        used = set()
-        vehicle_capacity = self.instance.capacity
 
-        def get_next_customer(last, available):
-            if not available:
-                return None
-            probs = [(c, self.relevance_matrix[last][c]) for c in available]
-            total = sum(p for _, p in probs)
-            if total == 0:
-                return random.choice(list(available))
-            r = random.uniform(0, total)
-            s = 0
-            for c, p in probs:
-                s += p
-                if s >= r:
-                    return c
-            return random.choice(list(available))
+        customers = np.array(range(1, len(self.instance.demands)))
+        p1 = rmea.solution_to_array(parent1)
+        p2 = rmea.solution_to_array(parent2)
 
-        while customers:
-            route = [0]
-            load = 0
-            current = 0
-            while True:
-                next_customer = get_next_customer(current, customers - used)
-                if next_customer is None or load + self.instance.demands[next_customer] > vehicle_capacity:
-                    break
-                route.append(next_customer)
-                load += self.instance.demands[next_customer]
-                used.add(next_customer)
-                current = next_customer
-            route.append(0)
-            child.append(route)
-            customers -= used
-        return child
+
+        #crossover point where we start dividing
+        crossover_point_p1 = 0
+        crossover_idx = 0
+        
+        while(crossover_point_p1 == 0):
+            crossover_idx = np.random.randint(2,len(p1)-1)
+            crossover_point_p1 = p1[crossover_idx]
+        p1_split1, p1_split2 = rmea.split_solution(p1,crossover_idx)
+
+        #highest relevancy point of crossover_point_p1
+        rlv_p1 = np.where(self.relevance_matrix[crossover_point_p1] == np.max(self.relevance_matrix[crossover_point_p1]))[0][0]
+
+
+        p2_split1, p2_split2 = rmea.split_solution(p2, np.where(p2 == rlv_p1)[0][0])
+        
+        m1 = np.concatenate((p1_split1,p2_split2))
+        m2 = np.concatenate((p2_split1,p1_split2))
+        m1, m_n1 = rmea.remove_duplicates(m1, self.relevance_matrix, customers)
+        m2, m_n2 = rmea.remove_duplicates(m1, self.relevance_matrix, customers)
+        m1, m_n1 = rmea.adjust_bad_routes(m1, m_n1, self.instance)
+        m2, m_n2 = rmea.adjust_bad_routes(m2, m_n2, self.instance)
+        c1 = rmea.add_missing_nodes(m1, m_n1, self.instance, self.relevance_matrix, customers)
+        c2 = rmea.add_missing_nodes(m2, m_n2, self.instance, self.relevance_matrix, customers)
+        return c1,c2
 
     def mutate(self, solution):
         new_solution = copy.deepcopy(solution)
@@ -155,39 +160,14 @@ class VRPSolverRMEA:
 
     def solve(self):
         population = self.initialize_population()
+        self.relevance_matrix = self.build_relevance_matrix()
+        
         no_improve = 0
-
         for generation in range(self.max_generations):
-            self.build_relevance_matrix(population[0])
-            population.sort(key=self.evaluate)
-            current_best = self.evaluate(population[0])
-            if current_best < self.best_cost:
-                self.best_cost = current_best
-                self.best_solution = copy.deepcopy(population[0])
-                no_improve = 0
-            else:
-                no_improve += 1
+            c1, c2 = self.crossover(population[0],population[1])
 
-            if generation % 10 == 0 or generation == self.max_generations - 1:
-                print(f"Epoka {generation}: najlepszy koszt = {self.best_cost:.2f}")
-            if no_improve >= self.no_improve_limit:
-                break
 
-            self.relevance_matrix = self.build_relevance_matrix(population[:10])
-            new_population = population[:10]
-
-            while len(new_population) < self.population_size:
-                p1, p2 = random.sample(population[:15], 2)
-                child = self.crossover(p1, p2)
-                child = self.mutate(child)
-                child = self.local_search(child)
-                new_population.append(child)
-
-            population = new_population
-            self.current_generation += 1
-
-        self.routes = self.best_solution
-
+        #TODO: choose crossover strategy, mutation strategy, REMEMBER TO UPDATE THE TIME AND ADJENCENCY MATRICES
     def print_solution(self):
         if not self.routes:
             print("Nie znaleziono rozwiązania.")

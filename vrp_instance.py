@@ -2,8 +2,8 @@ import tsplib95
 import urllib.request
 import os
 import numpy as np
-from distance_utils import compute_distance_matrix
 from distance_utils import euclidean_distance
+from distance_utils import compute_distance_matrix
 
 class VRPInstance:
     def __init__(self, path_or_url):
@@ -56,3 +56,4 @@ class VRPInstance:
                 if self.distance_matrix[i][j] > max_dist:
                     max_dist = self.distance_matrix[i][j]
         return max_dist
+    
