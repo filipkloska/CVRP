@@ -3,13 +3,14 @@ import numpy as np
 import copy
 import math
 from distance_utils import compute_distance_matrix
+from distance_utils import SCALE
 from collections import Counter
 import rmea_utils as rmea
 
 class VRPSolverRMEA:
     def __init__(self, instance):
         self.instance = instance
-        self.distance_matrix = compute_distance_matrix(instance.coords,dtype=float)
+        self.distance_matrix = compute_distance_matrix(instance.coords)
         self.best_solution = None
         self.best_cost = float('inf')
         self.routes = []
@@ -17,6 +18,7 @@ class VRPSolverRMEA:
         self.mutation_prob = 0.2
         self.population_size = 100
         self.max_generations = 30000
+        self.no_improve_soft_limit = 100
         self.no_improve_limit = 500
         self.relevance_matrix = None
         #matrix containing the times where node i j were adjacent to each other 
@@ -94,7 +96,7 @@ class VRPSolverRMEA:
         
         #not sure if it should be 29 or 30 - does this make a difference (i think it should)
         N = len(self.distance_matrix)
-        dist_max = self.instance.find_max_distance()
+        dist_max = self.instance.find_max_distance() / SCALE
         radius = self.neighbour_radius
         coords = self.instance.coords
         
@@ -108,7 +110,7 @@ class VRPSolverRMEA:
                     x_j, y_j = coords[j+1]
                     center_x = (x_i + x_j) / 2
                     center_y = (y_i + y_j) / 2
-                    dist_ij = self.distance_matrix[i][j]
+                    dist_ij = self.distance_matrix[i][j] /SCALE
                     # print(f"Dist ij: {dist_ij}")
                     relevance = 0
                     M = 0
@@ -243,9 +245,41 @@ class VRPSolverRMEA:
             improved_population.append(best_local)
             
         return improved_population
+    
+    def diversity_strategy(self, population, no_improve):
+        #number of customer pairs involved in the diversity strategy
+        N = list(range(1, len(self.instance.demands)))
+        D = int(len(N) * no_improve / self.max_generations)
+        D = min(D, len(N))
 
-    def diversity_strategy(self, population):
-        return population
+        new_population = []
+        for solution in population:
+            temp = random.sample(N, D)
+            new_solution = solution.copy()
+            for i in temp:
+                other_customers = [c for c in N if c != i]
+                ord = sorted(other_customers, key=lambda l: self.relevance_matrix[i][l], reverse=True)
+                j = random.choice(ord[-int(len(N)/10):])
+                i_idx = np.where(new_solution == i)[0][0]
+                j_idx = np.where(new_solution == j)[0][0]
+                new_solution[i_idx], new_solution[j_idx] = new_solution[j_idx], new_solution[i_idx]
+            new_demands = rmea.calculate_solution_demands(new_solution,self.instance)
+
+            solution_is_wrong = False
+            solution_is_wrong = (
+                any(demand > self.instance.capacity for demand in new_demands)
+                or len(rmea.split_solution_to_routes(new_solution)) > self.instance.num_vehicles
+            )
+            if solution_is_wrong:
+                new_population.append(solution)
+                continue
+
+            if self.evaluate(new_solution) < self.evaluate(solution):
+                new_population.append(new_solution)
+            else:
+                new_population.append(solution) 
+
+        return new_population
 
 
     def solve(self):
@@ -278,6 +312,8 @@ class VRPSolverRMEA:
 
                 new_population.extend([offspring1, offspring2])
 
+            if no_improve > self.no_improve_soft_limit:
+                population = self.diversity_strategy(population,no_improve)
             
             population = new_population[:self.population_size]
             #population = self.local_search(population)
@@ -292,9 +328,10 @@ class VRPSolverRMEA:
                 print(best_candidate)
                 print(f"Koszty: {rmea.calculate_solution_demands(best_candidate, self.instance)}")
                 no_improve = 0
-                print(f"Generacja {generation}: nowe najlepsze rozwiązanie {best_cost:.2f}")
+                print(f"Generacja {generation}: nowe najlepsze rozwiązanie {best_cost / SCALE}")
             else:
                 no_improve += 1
+            
             population = self.local_search(population)
             self.update_relevance_matrix(population)
 
@@ -304,7 +341,7 @@ class VRPSolverRMEA:
 
         self.routes = rmea.split_solution_to_plottable(self.best_solution)
         print(f"Najlepsze rozwiązanie {self.best_solution}")
-        print(rmea.calculate_solution_demands(self.best_solution, self.instance))
+        print(f"Koszty: {rmea.calculate_solution_demands(self.best_solution, self.instance)}")
 
 
     def get_routes(self):
@@ -323,7 +360,7 @@ class VRPSolverRMEA:
                 distance += self.instance.distance_matrix[route[j]][route[j + 1]]
                 plan_output += f" {route[j]} ->"
             plan_output += f" {route[-1]}"
-            plan_output += f"\n Długość trasy: {distance}"
+            plan_output += f"\n Długość trasy: {distance / SCALE}"
             print(plan_output)
             total_distance += distance
-        print(f"Łączna długość tras wszystkich pojazdów: {total_distance}")
+        print(f"Łączna długość tras wszystkich pojazdów: {total_distance / SCALE}")

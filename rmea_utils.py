@@ -181,4 +181,10 @@ def add_missing_nodes(solution, missing_nodes, instance, relevance_matrix, custo
     #print("Final demand")
     #print(calculate_solution_demands(solution,instance))
     return solution
-    
+
+def is_valid(solution, instance):
+    routes = split_solution_to_routes(solution)
+    return (
+        all(sum(instance.demands[n] for n in r if n != 0) <= instance.capacity for r in routes)
+        and len(routes) <= instance.num_vehicles
+    )

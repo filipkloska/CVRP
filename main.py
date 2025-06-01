@@ -7,7 +7,7 @@ url = "http://vrp.atd-lab.inf.puc-rio.br/media/com_vrp/instances/A/A-n80-k10.vrp
 #"E-n30-k3.vrp"
 #"A-n39-k5.vrp"
 #"A-n32-k5.vrp"
-instance = VRPInstance(url)
+instance = VRPInstance("E-n30-k3.vrp")
 instance.print_distance_matrix()
 
 solver = VRPSolverORTools(instance)
@@ -19,8 +19,6 @@ plotter = VRPPlotter(instance, solver)
 plotter.draw()
 
 solver = VRPSolverRMEA(instance)
-
-print(f"RADIUSSSS: {solver.neighbour_radius}")
 
 solver.solve()
 solver.print_solution()

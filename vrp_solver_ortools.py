@@ -50,6 +50,10 @@ class VRPSolverORTools:
         search_parameters.first_solution_strategy = (
             routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         )
+        search_parameters.local_search_metaheuristic = (
+        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
+        search_parameters.time_limit.FromSeconds(1)
 
         self.solution = self.routing.SolveWithParameters(search_parameters)
 
@@ -59,19 +63,22 @@ class VRPSolverORTools:
             return
 
         total_distance = 0
+        print("\\begin{itemize}")
         for vehicle_id in range(self.data["num_vehicles"]):
             index = self.routing.Start(vehicle_id)
-            plan_output = f"Trasa pojazdu {vehicle_id}:"
+            plan_output = f"\\item \\textbf{{Pojazd {vehicle_id}}}:"
             route_distance = 0
             while not self.routing.IsEnd(index):
                 node_index = self.manager.IndexToNode(index)
-                plan_output += f" {node_index} ->"
+                plan_output += f" {node_index} $\\rightarrow$"
                 previous_index = index
                 index = self.solution.Value(self.routing.NextVar(index))
                 route_distance += self.routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
-            plan_output += f" {self.manager.IndexToNode(index)}"
-            plan_output += f"\n Długość trasy: {route_distance}"
+            plan_output += f" {self.manager.IndexToNode(index)} \\\\\n"
+            plan_output += f"\\textit{{Długość trasy}}: {route_distance / 1000:.3f}"
             print(plan_output)
             total_distance += route_distance
+        print("\\end{itemize}")
+        print(f"\n\\noindent \\textbf{{Łączna długość tras wszystkich pojazdów}}: \\textit{{{total_distance / 1000:.3f}}}")
 
-        print(f"Łączna długość tras wszystkich pojazdów: {total_distance}")
+
